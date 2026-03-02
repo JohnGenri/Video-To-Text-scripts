@@ -19,6 +19,7 @@ A tool for automatic speech recognition (Speech-to-Text) based on the **Whisper*
 - **Input Formats:** `.wav`, `.mp3`, `.m4a`, `.flac`.
 - **Output:** A `.txt` file containing the full recognized text.
 - **Note:** Currently configured to recognize Russian speech (`language="ru"`).
+- **Default model:** `medium` (good quality for 4 CPU / 8 GB RAM server profile).
 
 ### 3. Summarizer (`summarizer.py`)
 A smart text summarizer using the **YandexGPT** API.
@@ -65,4 +66,18 @@ Execute the scripts sequentially depending on your task:
 
 ## 📝 Notes
 - To use `summarizer.py`, you need a Yandex Cloud account with a service account that has the `ai.languageModels.user` role.
-- The Whisper model (`base`) in `recognizer.py` will be downloaded automatically upon the first run. This may take some time.
+- The selected Whisper model will be downloaded automatically on first run. This may take some time.
+- You can tune recognizer via environment variables:
+
+```bash
+WHISPER_MODEL_SIZE=medium
+WHISPER_COMPUTE_TYPE=int8
+WHISPER_CPU_THREADS=4
+WHISPER_NUM_WORKERS=1
+WHISPER_BEAM_SIZE=5
+WHISPER_LANGUAGE=ru
+WHISPER_VAD_FILTER=1
+python recognizer.py
+```
+
+- If recognition is too slow, switch to `WHISPER_MODEL_SIZE=small`.

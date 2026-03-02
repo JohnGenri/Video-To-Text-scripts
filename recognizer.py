@@ -6,6 +6,20 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QPushButton, QVBoxLayout
 from PyQt6.QtCore import QThread, pyqtSignal
 from faster_whisper import WhisperModel
 
+
+def _env_int(name, default):
+    try:
+        return int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+
+def _env_bool(name, default):
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
+
 class TranscriptionThread(QThread):
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
@@ -17,17 +31,41 @@ class TranscriptionThread(QThread):
 
     def run(self):
         try:
-            # Инициализация модели
-            # 'base' - быстро и неплохо. Если сервер мощный, замени на 'small' или 'medium'
-            model_size = "base"
-            
-            # device="cpu" для сервера без мощной видеокарты NVIDIA
-            # compute_type="int8" позволяет потреблять меньше оперативной памяти
-            model = WhisperModel(model_size, device="cpu", compute_type="int8")
+            # Runtime tuning via env vars:
+            # WHISPER_MODEL_SIZE=base|small|medium|large-v3
+            # WHISPER_COMPUTE_TYPE=int8|float16|float32
+            # WHISPER_CPU_THREADS=<int>, WHISPER_NUM_WORKERS=<int>
+            # WHISPER_BEAM_SIZE=<int>, WHISPER_LANGUAGE=ru|en|...
+            # WHISPER_VAD_FILTER=1|0
+            model_size = (os.getenv("WHISPER_MODEL_SIZE", "medium") or "medium").strip()
+            compute_type = (os.getenv("WHISPER_COMPUTE_TYPE", "int8") or "int8").strip()
+            cpu_threads = max(1, _env_int("WHISPER_CPU_THREADS", os.cpu_count() or 4))
+            num_workers = max(1, _env_int("WHISPER_NUM_WORKERS", 1))
+            beam_size = max(1, _env_int("WHISPER_BEAM_SIZE", 5))
+            language = (os.getenv("WHISPER_LANGUAGE", "ru") or "").strip()
+            vad_filter = _env_bool("WHISPER_VAD_FILTER", True)
+
+            self.progress_update.emit(
+                f"Загружаю модель '{model_size}' ({compute_type}, {cpu_threads} CPU threads)..."
+            )
+            model = WhisperModel(
+                model_size,
+                device="cpu",
+                compute_type=compute_type,
+                cpu_threads=cpu_threads,
+                num_workers=num_workers,
+            )
 
             self.progress_update.emit("Модель загружена. Начинаю распознавание...")
-            
-            segments, info = model.transcribe(self.audio_path, beam_size=5, language="ru")
+
+            transcribe_opts = {
+                "beam_size": beam_size,
+                "vad_filter": vad_filter,
+            }
+            if language:
+                transcribe_opts["language"] = language
+
+            segments, info = model.transcribe(self.audio_path, **transcribe_opts)
 
             full_text = []
             for segment in segments:
